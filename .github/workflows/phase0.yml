@@ -36,5 +36,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: phase0-log-${{ github.run_id }}
-          path: phase0_*.log
+          path: |
+            phase0_*.log
+            shortlist_fallback.csv
           retention-days: 7
