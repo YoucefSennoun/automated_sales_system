@@ -1,0 +1,44 @@
+name: Phase 0 — Product Research
+
+on:
+  schedule:
+    # Runs every day at 06:00 UTC (before your workday starts)
+    - cron: "0 6 * * *"
+  workflow_dispatch:  # allows manual trigger from GitHub UI
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install -r phase0/requirements.txt
+
+      - name: Run Phase 0 research pipeline
+        env:
+          GEMINI_API_KEY:          ${{ secrets.GEMINI_API_KEY }}
+          GSHEET_CREDENTIALS_B64:  ${{ secrets.GSHEET_CREDENTIALS_B64 }}
+          GSHEET_SPREADSHEET_ID:   ${{ secrets.GSHEET_SPREADSHEET_ID }}
+          PLUSBASE_STORE_URL:      ${{ secrets.PLUSBASE_STORE_URL }}
+        run: |
+          cd phase0
+          python main.py
+
+      - name: Upload log as artifact
+        if: always()   # upload log even if the step failed
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase0-log-${{ github.run_id }}
+          path: phase0/phase0_*.log
+          retention-days: 7

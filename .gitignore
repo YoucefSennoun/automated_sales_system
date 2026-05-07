@@ -1,0 +1,6 @@
+credentials.json
+GSHEET_CREDENTIALS_B64.txt
+apis_ids.txt
+*.log
+__pycache__/
+*.pyc
