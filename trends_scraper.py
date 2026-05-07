@@ -51,12 +51,17 @@ def get_trends_scores(products: list[dict]) -> dict[str, float]:
     scores: dict[str, float] = {}
 
     # Process in batches of BATCH_SIZE
+    # If Google is IP-blocking us (429 on every attempt), bail out early
+    # rather than spending 40+ minutes retrying guaranteed failures.
+    CONSECUTIVE_FAIL_LIMIT = 2  # abort after this many back-to-back batch failures
+    consecutive_failures = 0
+
     total_batches = -(-len(keywords) // BATCH_SIZE)
     for i in range(0, len(keywords), BATCH_SIZE):
         batch = keywords[i : i + BATCH_SIZE]
         batch_num = i // BATCH_SIZE + 1
 
-        success = False
+        batch_succeeded = False
         backoff = BACKOFF_BASE
         for attempt in range(1, MAX_RETRIES + 1):
             try:
@@ -80,7 +85,8 @@ def get_trends_scores(products: list[dict]) -> dict[str, float]:
                             scores[keyword_map[kw]] = 0.0
 
                 log.info("Trends batch %d/%d done", batch_num, total_batches)
-                success = True
+                batch_succeeded = True
+                consecutive_failures = 0  # reset on success
                 break  # done — exit retry loop
 
             except Exception as e:
@@ -91,15 +97,32 @@ def get_trends_scores(products: list[dict]) -> dict[str, float]:
                     wait = backoff + jitter
                     log.warning(
                         "Trends 429 on batch %d/%d (attempt %d/%d) — waiting %.0fs",
-                        batch_num, total_batches, attempt, MAX_RETRIES, wait
+                        batch_num, total_batches, attempt, MAX_RETRIES, wait,
                     )
                     time.sleep(wait)
                     backoff *= 2
                 else:
-                    log.error("Trends error on batch %s (attempt %d): %s", batch, attempt, e)
+                    log.error(
+                        "Trends error on batch %s (attempt %d): %s", batch, attempt, e
+                    )
                     for kw in batch:
                         scores[keyword_map[kw]] = 0.0
                     break  # give up on this batch
+
+        if not batch_succeeded:
+            consecutive_failures += 1
+            if consecutive_failures >= CONSECUTIVE_FAIL_LIMIT:
+                log.warning(
+                    "Trends: %d consecutive batch failures — Google is rate-limiting "
+                    "this IP. Skipping remaining %d batches (scores default to 0.0).",
+                    consecutive_failures,
+                    total_batches - batch_num,
+                )
+                # Zero-fill all remaining keywords
+                for remaining_kw in keywords[i + BATCH_SIZE :]:
+                    if remaining_kw in keyword_map:
+                        scores[keyword_map[remaining_kw]] = 0.0
+                break  # abort trends step entirely
 
         time.sleep(DELAY_BETWEEN_BATCHES + random.uniform(0, 3))
 
