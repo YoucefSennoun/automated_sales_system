@@ -37,11 +37,18 @@ TRENDS_GEO       = ""          # "" = worldwide; "US" = US only
 MAX_RETRIES      = 3
 BACKOFF          = 15          # seconds — generous to avoid prolonged Google blocks
 
+# Set True to skip Google Trends entirely (pytrends is often rate-limited by
+# Google from CI/cloud IPs). Flip to False once you have a proxy or SerpAPI key.
+SKIP_TRENDS = True
+
 # ── TikTok signal ───────────────────────────────────────────────────────────
 # We estimate TikTok presence via Google search result count for:
 # site:tiktok.com "<product keyword>"
 # Not perfect but free and no auth needed.
 TIKTOK_SEARCH_DELAY = 15       # seconds between Google searches — avoids 429 blocks
+
+# Set True to skip TikTok signal entirely (Google search is often rate-limited).
+SKIP_TIKTOK = True
 
 # ── Scoring weights (must sum to 1.0) ──────────────────────────────────────
 SCORE_WEIGHT_AMAZON = 0.45

@@ -22,6 +22,7 @@ from scorer           import score_products, print_leaderboard
 from plusbase_matcher import filter_to_store_products
 from gemini_filter    import gemini_filter
 from sheets_output    import write_shortlist
+from config           import SKIP_TRENDS, SKIP_TIKTOK
 
 # ── Logging setup ────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -54,11 +55,19 @@ def run():
     # ── Step 2: Trend signals ─────────────────────────────────────────────────
     log.info("Step 2/5 — Fetching trend signals...")
 
-    log.info("  → Google Trends...")
-    trends_scores = get_trends_scores(products)
+    if not SKIP_TRENDS:
+        log.info("  → Google Trends...")
+        trends_scores = get_trends_scores(products)
+    else:
+        log.info("  → Google Trends... (SKIPPED in config)")
+        trends_scores = {}
 
-    log.info("  → TikTok presence...")
-    tiktok_scores = get_tiktok_scores(products)
+    if not SKIP_TIKTOK:
+        log.info("  → TikTok presence...")
+        tiktok_scores = get_tiktok_scores(products)
+    else:
+        log.info("  → TikTok presence... (SKIPPED in config)")
+        tiktok_scores = {}
 
     # ── Step 3: Score and rank ────────────────────────────────────────────────
     log.info("Step 3/5 — Scoring and ranking...")
