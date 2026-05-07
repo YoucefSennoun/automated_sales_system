@@ -38,14 +38,14 @@ def _parse_bestsellers_page(html: str, category: str) -> list[dict]:
     items = soup.select("div.zg-grid-general-faceout")
 
     for rank, item in enumerate(items[:AMAZON_TOP_N], start=1):
-        # Title
-        title_el = item.select_one("div.p13n-sc-truncate-desktop-type2, span.p13n-sc-truncate")
+        # Title — handle obfuscated classes
+        title_el = item.select_one('div[class*="p13n-sc-css-line-clamp"], div.p13n-sc-truncate-desktop-type2, span.p13n-sc-truncate')
         title = title_el.get_text(strip=True) if title_el else None
         if not title:
             continue
 
-        # Price (optional — not always present)
-        price_el = item.select_one("span.p13n-sc-price")
+        # Price (optional — handle obfuscated classes)
+        price_el = item.select_one('span[class*="p13n-sc-price"]')
         price_text = price_el.get_text(strip=True) if price_el else "N/A"
 
         # Product URL
