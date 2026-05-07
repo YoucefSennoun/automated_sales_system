@@ -34,12 +34,14 @@ USER_AGENTS = [
 # ── Google Trends ───────────────────────────────────────────────────────────
 TRENDS_TIMEFRAME = "now 7-d"   # last 7 days — catches fast-rising products
 TRENDS_GEO       = ""          # "" = worldwide; "US" = US only
+MAX_RETRIES      = 3
+BACKOFF          = 15          # seconds — generous to avoid prolonged Google blocks
 
 # ── TikTok signal ───────────────────────────────────────────────────────────
 # We estimate TikTok presence via Google search result count for:
 # site:tiktok.com "<product keyword>"
 # Not perfect but free and no auth needed.
-TIKTOK_SEARCH_DELAY = 2        # seconds between Google searches
+TIKTOK_SEARCH_DELAY = 15       # seconds between Google searches — avoids 429 blocks
 
 # ── Scoring weights (must sum to 1.0) ──────────────────────────────────────
 SCORE_WEIGHT_AMAZON = 0.45

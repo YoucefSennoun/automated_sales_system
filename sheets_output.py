@@ -87,6 +87,42 @@ def write_shortlist(products: list[dict]) -> bool:
             title=GSHEET_WORKSHEET_NAME, rows=1000, cols=len(HEADERS)
         )
         log.info("Created worksheet: %s", GSHEET_WORKSHEET_NAME)
+    except Exception as e:
+        log.error("Failed to access Google Sheet: %s", e)
+        # Fallback: write to local CSV so the run isn't completely lost
+        import csv, os
+        fallback_path = os.path.join(os.getcwd(), "shortlist_fallback.csv")
+        try:
+            with open(fallback_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(HEADERS)
+                today = datetime.utcnow().strftime("%Y-%m-%d")
+                for rank, p in enumerate(products, 1):
+                    row = [
+                        today,
+                        rank,
+                        p.get("title", ""),
+                        p.get("category", ""),
+                        p.get("price", ""),
+                        p.get("combined_score", 0),
+                        p.get("amazon_score", 0),
+                        p.get("trends_score", 0),
+                        p.get("tiktok_score", 0),
+                        p.get("store_match", ""),
+                        p.get("hook_idea", ""),
+                        p.get("gemini_reason", ""),
+                        p.get("url", ""),
+                        "pending",
+                    ]
+                    writer.writerow(row)
+            log.warning(
+                "Google Sheet unavailable — wrote %d products to fallback CSV: %s",
+                len(products), fallback_path,
+            )
+            return True   # CSV write succeeded; treat as non-fatal
+        except Exception as fe:
+            log.error("Failed to write fallback CSV: %s", fe)
+            return False  # both sheet and CSV failed — truly fatal
 
     _ensure_headers(worksheet)
 
@@ -108,7 +144,7 @@ def write_shortlist(products: list[dict]) -> bool:
             p.get("hook_idea", ""),
             p.get("gemini_reason", ""),
             p.get("url", ""),
-            "pending",    # Phase 1 will update this to "scripted"
+            "pending",
         ]
         rows.append(row)
 

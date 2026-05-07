@@ -101,7 +101,7 @@ def run():
         log.info("  #%d %.2f  %s", i, p["combined_score"], p["title"])
         if p.get("hook_idea"):
             log.info("       Hook: %s", p["hook_idea"])
-    log.info("Sheet write: %s", "OK" if success else "FAILED")
+    log.info("Sheet write: %s", "OK" if success else "FAILED (check logs)")
     log.info("═" * 60)
 
     # Exit with error if sheet write failed (GitHub Actions will flag it)

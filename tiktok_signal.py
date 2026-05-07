@@ -54,41 +54,45 @@ def _search_tiktok_presence(keyword: str) -> float:
         "Accept-Language": "en-US,en;q=0.9",
     }
 
-    try:
-        resp = requests.get(
-            GOOGLE_SEARCH_URL,
-            params=params,
-            headers=headers,
-            timeout=10,
-        )
-        if resp.status_code == 429:
-            log.warning("Google rate-limited TikTok search for [%s]", keyword)
+    max_retries = 3
+    backoff = 15  # seconds — generous initial wait before retrying a 429
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = requests.get(
+                GOOGLE_SEARCH_URL,
+                params=params,
+                headers=headers,
+                timeout=10,
+            )
+            if resp.status_code == 429:
+                log.warning("Google rate-limited TikTok search for [%s] – attempt %d", keyword, attempt)
+                if attempt < max_retries:
+                    time.sleep(backoff)
+                    backoff *= 2
+                    continue
+                return 0.0
+            resp.raise_for_status()
+
+            soup = BeautifulSoup(resp.text, "html.parser")
+            stats_div = soup.find("div", id="result-stats")
+            if not stats_div:
+                return 0.0
+            text = stats_div.get_text()
+            import re
+            match = re.search(r"[\d,]+", text)
+            if not match:
+                return 0.0
+            count = int(match.group().replace(",", ""))
+            score = _normalize_count(count)
+            log.debug("TikTok [%s]: ~%d results → score %.2f", keyword, count, score)
+            return score
+        except Exception as e:
+            log.error("TikTok search failed for [%s] on attempt %d: %s", keyword, attempt, e)
+            if attempt < max_retries:
+                time.sleep(backoff)
+                backoff *= 2
+                continue
             return 0.0
-        resp.raise_for_status()
-
-        soup = BeautifulSoup(resp.text, "html.parser")
-
-        # Google shows result count in: <div id="result-stats">About 1,230,000 results</div>
-        stats_div = soup.find("div", id="result-stats")
-        if not stats_div:
-            # No results found
-            return 0.0
-
-        text = stats_div.get_text()
-        # Extract first number sequence (may contain commas)
-        import re
-        match = re.search(r"[\d,]+", text)
-        if not match:
-            return 0.0
-
-        count = int(match.group().replace(",", ""))
-        score = _normalize_count(count)
-        log.debug("TikTok [%s]: ~%d results → score %.2f", keyword, count, score)
-        return score
-
-    except Exception as e:
-        log.error("TikTok search failed for [%s]: %s", keyword, e)
-        return 0.0
 
 
 def get_tiktok_scores(products: list[dict]) -> dict[str, float]:
