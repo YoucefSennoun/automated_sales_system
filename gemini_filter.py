@@ -41,7 +41,7 @@ Respond ONLY with a valid JSON object in this exact format, no markdown:
     {
       "id": "numeric id from input",
       "reason": "one sentence why this is a good pick",
-      "hook_idea": "one sentence video hook idea for TikTok"
+      "hook_idea": "one sentence video hook idea for TikTok (do not make medical/health claims)"
     }
   ],
   "rejected": [
@@ -98,7 +98,13 @@ def gemini_filter(products: list[dict], top_n: int = SHORTLIST_SIZE * 2) -> list
             "temperature": 0.3,    # Low temp = consistent, analytical responses
             "maxOutputTokens": 2048,
             "responseMimeType": "application/json",
-        }
+        },
+        "safetySettings": [
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_ONLY_HIGH"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"}
+        ]
     }
 
     try:
