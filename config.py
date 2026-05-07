@@ -79,3 +79,7 @@ GSHEET_WORKSHEET_NAME  = "Phase0_Products"
 # ── PlusBase ────────────────────────────────────────────────────────────────
 # Your store URL — used to cross-check if a product is available
 PLUSBASE_STORE_URL = os.getenv("PLUSBASE_STORE_URL", "")
+
+# Set True to skip matching products against your store catalog.
+# Useful if you don't know your store's JSON API endpoint.
+SKIP_PLUSBASE = True

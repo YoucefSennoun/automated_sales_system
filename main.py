@@ -22,7 +22,7 @@ from scorer           import score_products, print_leaderboard
 from plusbase_matcher import filter_to_store_products
 from gemini_filter    import gemini_filter
 from sheets_output    import write_shortlist
-from config           import SKIP_TRENDS, SKIP_TIKTOK
+from config           import SKIP_TRENDS, SKIP_TIKTOK, SKIP_PLUSBASE
 
 # ── Logging setup ────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -81,11 +81,15 @@ def run():
 
     # ── Step 4: PlusBase filter ───────────────────────────────────────────────
     log.info("Step 4/5 — Filtering to PlusBase catalog...")
-    matched = filter_to_store_products(scored)
+    if not SKIP_PLUSBASE:
+        matched = filter_to_store_products(scored)
 
-    if not matched:
-        log.warning("No products matched the store catalog. Using top scored products.")
-        matched = scored  # fallback: proceed without store filter
+        if not matched:
+            log.warning("No products matched the store catalog. Using top scored products.")
+            matched = scored  # fallback: proceed without store filter
+    else:
+        log.info("  → PlusBase catalog filter... (SKIPPED in config)")
+        matched = scored
 
     log.info("  → %d products after store filter", len(matched))
 
