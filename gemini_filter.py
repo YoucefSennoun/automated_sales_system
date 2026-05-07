@@ -62,6 +62,13 @@ def gemini_filter(products: list[dict], top_n: int = SHORTLIST_SIZE * 2) -> list
     if not products:
         return []
 
+    # Guard: ensure Gemini API key is configured
+    from config import GEMINI_API_KEY
+    if not GEMINI_API_KEY:
+        log.warning("GEMINI_API_KEY not set – skipping Gemini filter; returning top candidates.")
+        # Return top SHORTLIST_SIZE candidates directly
+        return sorted(products, key=lambda x: x.get("combined_score", 0), reverse=True)[:SHORTLIST_SIZE]
+
     # Only send top candidates to save API quota
     candidates = products[:top_n]
 
@@ -89,6 +96,7 @@ def gemini_filter(products: list[dict], top_n: int = SHORTLIST_SIZE * 2) -> list
         "generationConfig": {
             "temperature": 0.3,    # Low temp = consistent, analytical responses
             "maxOutputTokens": 2048,
+            "responseMimeType": "application/json",
         }
     }
 
