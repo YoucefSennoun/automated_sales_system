@@ -39,14 +39,14 @@ Respond ONLY with a valid JSON object in this exact format, no markdown:
 {
   "approved": [
     {
-      "title": "exact product title from input",
+      "id": "numeric id from input",
       "reason": "one sentence why this is a good pick",
       "hook_idea": "one sentence video hook idea for TikTok"
     }
   ],
   "rejected": [
     {
-      "title": "exact product title from input",
+      "id": "numeric id from input",
       "reason": "one sentence why this was removed"
     }
   ]
@@ -72,15 +72,16 @@ def gemini_filter(products: list[dict], top_n: int = SHORTLIST_SIZE * 2) -> list
     # Only send top candidates to save API quota
     candidates = products[:top_n]
 
-    # Build simple product list for the prompt
+    # Build simple product list for the prompt with IDs to prevent string escaping issues
     product_list = [
         {
+            "id":       str(i),
             "title":    p["title"],
             "category": p.get("category", "unknown"),
             "score":    p.get("combined_score", 0),
             "price":    p.get("price", "N/A"),
         }
-        for p in candidates
+        for i, p in enumerate(candidates)
     ]
 
     user_message = f"Filter this product list:\n{json.dumps(product_list, indent=2)}"
@@ -116,17 +117,19 @@ def gemini_filter(products: list[dict], top_n: int = SHORTLIST_SIZE * 2) -> list
         clean = clean.strip().rstrip("```").strip()
 
         result = json.loads(clean)
-        approved_titles = {item["title"] for item in result.get("approved", [])}
+        
+        # Map back from string ID to candidate index
+        approved_ids = {int(item["id"]) for item in result.get("approved", []) if str(item.get("id")).isdigit()}
 
         # Merge Gemini's reasoning back into the product dicts
-        hook_map   = {item["title"]: item.get("hook_idea", "") for item in result.get("approved", [])}
-        reason_map = {item["title"]: item.get("reason", "")    for item in result.get("approved", [])}
+        hook_map   = {int(item["id"]): item.get("hook_idea", "") for item in result.get("approved", []) if str(item.get("id")).isdigit()}
+        reason_map = {int(item["id"]): item.get("reason", "")    for item in result.get("approved", []) if str(item.get("id")).isdigit()}
 
         filtered = []
-        for p in candidates:
-            if p["title"] in approved_titles:
-                p["hook_idea"]      = hook_map.get(p["title"], "")
-                p["gemini_reason"]  = reason_map.get(p["title"], "")
+        for i, p in enumerate(candidates):
+            if i in approved_ids:
+                p["hook_idea"]      = hook_map.get(i, "")
+                p["gemini_reason"]  = reason_map.get(i, "")
                 filtered.append(p)
 
         # Sort by combined_score, return top SHORTLIST_SIZE
@@ -144,7 +147,7 @@ def gemini_filter(products: list[dict], top_n: int = SHORTLIST_SIZE * 2) -> list
 
     except json.JSONDecodeError as e:
         log.error("Gemini returned invalid JSON: %s", e)
-        log.debug("Raw response: %s", raw_text[:500] if 'raw_text' in dir() else "N/A")
+        log.error("Raw response: %s", raw_text if 'raw_text' in locals() else "N/A")
         # Fallback: return top products without Gemini filter
         return candidates[:SHORTLIST_SIZE]
 
