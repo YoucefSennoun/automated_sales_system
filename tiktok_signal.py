@@ -70,7 +70,7 @@ def _search_tiktok_presence(keyword: str) -> float:
                     time.sleep(backoff)
                     backoff *= 2
                     continue
-                return 0.0
+                return -1.0  # sentinel: all retries exhausted on 429
             resp.raise_for_status()
 
             soup = BeautifulSoup(resp.text, "html.parser")
@@ -99,13 +99,40 @@ def get_tiktok_scores(products: list[dict]) -> dict[str, float]:
     """
     Returns {product_title: tiktok_score} for all products.
     Adds a small random delay between searches to avoid Google blocks.
+    Bails out early if Google is rate-limiting the whole IP session.
     """
+    # After this many consecutive products all fail every retry, assume
+    # Google has blocked the IP entirely and skip the rest.
+    CONSECUTIVE_FAIL_LIMIT = 3
+    consecutive_failures = 0
+
     scores = {}
     for p in products:
         title = p["title"]
         # Use a short 2-3 word version for TikTok search
         keyword = " ".join(title.split()[:3])
-        scores[title] = _search_tiktok_presence(keyword)
+        result = _search_tiktok_presence(keyword)
+
+        if result < 0:
+            # -1.0 sentinel: all retries exhausted with 429
+            scores[title] = 0.0
+            consecutive_failures += 1
+            if consecutive_failures >= CONSECUTIVE_FAIL_LIMIT:
+                log.warning(
+                    "TikTok: %d consecutive 429 failures — Google is rate-limiting "
+                    "this IP. Skipping remaining %d products (scores default to 0.0).",
+                    consecutive_failures,
+                    sum(1 for q in products if q["title"] not in scores) - 1,
+                )
+                # Zero-fill all remaining products
+                for remaining in products:
+                    if remaining["title"] not in scores:
+                        scores[remaining["title"]] = 0.0
+                break
+        else:
+            scores[title] = result
+            consecutive_failures = 0  # reset on any success
+
         time.sleep(TIKTOK_SEARCH_DELAY + random.uniform(0, 1.0))
 
     return scores
