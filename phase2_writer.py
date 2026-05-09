@@ -63,49 +63,63 @@ def generate_script(product: dict) -> dict:
         ],
     }
 
-    try:
-        resp = requests.post(GEMINI_API_URL, json=payload, timeout=60)
-        resp.raise_for_status()
-        data = resp.json()
-        raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
-        
-        # Clean JSON markdown fences if present
-        clean = raw_text.strip()
-        if clean.startswith("```"):
-            clean = clean.split("```", 2)[1]
-            if clean.startswith("json"):
-                clean = clean[4:]
-        clean = clean.strip().rstrip("`").strip()
-        
+    for attempt in range(3):
         try:
-            return json.loads(clean)
-        except json.JSONDecodeError as e:
-            log.warning("Gemini returned invalid JSON (possibly truncated). Attempting regex fallback... Error: %s", e)
-            import re
-            result = {"voiceover_text": "", "captions": [], "hashtags": ""}
+            resp = requests.post(GEMINI_API_URL, json=payload, timeout=60)
+            if resp.status_code == 429:
+                import time
+                log.warning("Gemini 429 Rate Limit hit. Retrying in %d seconds...", 20 * (attempt + 1))
+                time.sleep(20 * (attempt + 1))
+                continue
+                
+            resp.raise_for_status()
+            data = resp.json()
+            raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
             
-            vo_match = re.search(r'"voiceover_text"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', clean)
-            if vo_match:
-                result["voiceover_text"] = vo_match.group(1).replace('\\"', '"')
+            # Clean JSON markdown fences if present
+            clean = raw_text.strip()
+            if clean.startswith("```"):
+                clean = clean.split("```", 2)[1]
+                if clean.startswith("json"):
+                    clean = clean[4:]
+            clean = clean.strip().rstrip("`").strip()
+            
+            try:
+                return json.loads(clean)
+            except json.JSONDecodeError as e:
+                log.warning("Gemini returned invalid JSON (possibly truncated). Attempting regex fallback... Error: %s", e)
+                import re
+                result = {"voiceover_text": "", "captions": [], "hashtags": ""}
                 
-            hash_match = re.search(r'"hashtags"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', clean)
-            if hash_match:
-                result["hashtags"] = hash_match.group(1).replace('\\"', '"')
-                
-            cap_match = re.search(r'"captions"\s*:\s*\[(.*?)\]', clean, re.DOTALL)
-            if cap_match:
-                cap_str = cap_match.group(1)
-                captions = re.findall(r'"([^"\\]*(?:\\.[^"\\]*)*)"', cap_str)
-                result["captions"] = [c.replace('\\"', '"') for c in captions]
-                
-            if result["voiceover_text"]:
-                return result
+                vo_match = re.search(r'"voiceover_text"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', clean)
+                if vo_match:
+                    result["voiceover_text"] = vo_match.group(1).replace('\\"', '"')
+                    
+                hash_match = re.search(r'"hashtags"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', clean)
+                if hash_match:
+                    result["hashtags"] = hash_match.group(1).replace('\\"', '"')
+                    
+                cap_match = re.search(r'"captions"\s*:\s*\[(.*?)\]', clean, re.DOTALL)
+                if cap_match:
+                    cap_str = cap_match.group(1)
+                    captions = re.findall(r'"([^"\\]*(?:\\.[^"\\]*)*)"', cap_str)
+                    result["captions"] = [c.replace('\\"', '"') for c in captions]
+                    
+                if result["voiceover_text"]:
+                    return result
+                else:
+                    raise
+            
+        except Exception as e:
+            if attempt == 2:
+                log.error("Gemini script generation failed for %s: %s", product.get("title", "")[:20], e)
+                return {}
             else:
-                raise
-        
-    except Exception as e:
-        log.error("Gemini script generation failed for %s: %s", product.get("title", "")[:20], e)
-        return {}
+                import time
+                log.warning("Gemini error: %s. Retrying...", e)
+                time.sleep(10)
+                
+    return {}
 
 def run_phase2():
     log.info("Starting Phase 2: Script Generation")

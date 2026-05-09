@@ -27,28 +27,25 @@ def _get_credentials():
 
 import requests
 
-def upload_to_catbox(file_path: str) -> str:
-    """Uploads a file to catbox.moe (free, permanent, direct link) to bypass Drive quotas."""
+def upload_to_transfer_sh(file_path: str) -> str:
+    """Uploads a file to transfer.sh (free, keeps for 14 days, direct link) to bypass Drive quotas."""
     if not os.path.exists(file_path):
         log.error("File not found: %s", file_path)
         return ""
 
     try:
+        filename = os.path.basename(file_path)
         with open(file_path, 'rb') as f:
-            files = {
-                'reqtype': (None, 'fileupload'),
-                'fileToUpload': f
-            }
-            resp = requests.post("https://catbox.moe/user/api.php", files=files, timeout=120)
+            resp = requests.put(f"https://transfer.sh/{filename}", data=f, timeout=120)
             resp.raise_for_status()
             
-            # Catbox returns the direct URL as raw text in the response body
+            # transfer.sh returns the URL in plain text (e.g., https://transfer.sh/1a2b3c/video.mp4)
             direct_link = resp.text.strip()
-            log.info("Uploaded %s to Catbox. Link: %s", file_path, direct_link)
+            log.info("Uploaded %s to transfer.sh. Link: %s", file_path, direct_link)
             return direct_link
 
     except Exception as e:
-        log.error("Catbox upload failed for %s: %s", file_path, e)
+        log.error("Transfer.sh upload failed for %s: %s", file_path, e)
         return ""
 
 def update_content_queue(product_title: str, video_link: str, caption_text: str):
@@ -93,7 +90,7 @@ def run_phase4():
             continue
             
         log.info("Staging video for: %s", p["title"][:50])
-        video_link = upload_to_catbox(video_path)
+        video_link = upload_to_transfer_sh(video_path)
         
         if video_link:
             # Combine hook and hashtags for the social media caption
