@@ -7,6 +7,12 @@ and stitches the scraped images into a 9:16 vertical video with captions using m
 import json
 import logging
 import os
+
+# Patch for Pillow >= 10.0.0 which removed ANTIALIAS, breaking moviepy 1.0.3
+import PIL.Image
+if not hasattr(PIL.Image, 'ANTIALIAS'):
+    PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
+
 from gtts import gTTS
 from moviepy.editor import ImageClip, AudioFileClip, TextClip, CompositeVideoClip, concatenate_videoclips
 from config import SHORTLIST_SIZE
