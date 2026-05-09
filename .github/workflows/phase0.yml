@@ -20,7 +20,14 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      - name: Install dependencies
+      - name: Install system dependencies (ImageMagick)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+          # Fix ImageMagick policy to allow text generation for moviepy
+          sudo sed -i 's/<policy domain="path" rights="none" pattern="@\*"/<!-- <policy domain="path" rights="none" pattern="@\*" -->/g' /etc/ImageMagick-6/policy.xml
+
+      - name: Install Python dependencies
         run: pip install -r requirements.txt
 
       - name: Run Phase 0 research pipeline
@@ -30,6 +37,14 @@ jobs:
           GSHEET_SPREADSHEET_ID:  ${{ secrets.GSHEET_SPREADSHEET_ID }}
           PLUSBASE_STORE_URL:     ${{ secrets.PLUSBASE_STORE_URL }}
         run: python main.py
+
+      - name: Run Phase 1-4 Content Creation Pipeline
+        env:
+          GEMINI_API_KEY:         ${{ secrets.GEMINI_API_KEY }}
+          GSHEET_CREDENTIALS_B64: ${{ secrets.GSHEET_CREDENTIALS_B64 }}
+          GSHEET_SPREADSHEET_ID:  ${{ secrets.GSHEET_SPREADSHEET_ID }}
+          DRIVE_FOLDER_ID:        ${{ secrets.DRIVE_FOLDER_ID }}
+        run: python main_content.py
 
       - name: Upload log as artifact
         if: always()
