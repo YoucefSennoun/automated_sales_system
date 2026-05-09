@@ -77,7 +77,31 @@ def generate_script(product: dict) -> dict:
                 clean = clean[4:]
         clean = clean.strip().rstrip("`").strip()
         
-        return json.loads(clean)
+        try:
+            return json.loads(clean)
+        except json.JSONDecodeError as e:
+            log.warning("Gemini returned invalid JSON (possibly truncated). Attempting regex fallback... Error: %s", e)
+            import re
+            result = {"voiceover_text": "", "captions": [], "hashtags": ""}
+            
+            vo_match = re.search(r'"voiceover_text"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', clean)
+            if vo_match:
+                result["voiceover_text"] = vo_match.group(1).replace('\\"', '"')
+                
+            hash_match = re.search(r'"hashtags"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', clean)
+            if hash_match:
+                result["hashtags"] = hash_match.group(1).replace('\\"', '"')
+                
+            cap_match = re.search(r'"captions"\s*:\s*\[(.*?)\]', clean, re.DOTALL)
+            if cap_match:
+                cap_str = cap_match.group(1)
+                captions = re.findall(r'"([^"\\]*(?:\\.[^"\\]*)*)"', cap_str)
+                result["captions"] = [c.replace('\\"', '"') for c in captions]
+                
+            if result["voiceover_text"]:
+                return result
+            else:
+                raise
         
     except Exception as e:
         log.error("Gemini script generation failed for %s: %s", product.get("title", "")[:20], e)

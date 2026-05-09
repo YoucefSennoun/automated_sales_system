@@ -7,17 +7,16 @@ and stitches the scraped images into a 9:16 vertical video with captions using m
 import json
 import logging
 import os
-import asyncio
-from edge_tts import Communicate
+from gtts import gTTS
 from moviepy.editor import ImageClip, AudioFileClip, TextClip, CompositeVideoClip, concatenate_videoclips
 from config import SHORTLIST_SIZE
 
 log = logging.getLogger(__name__)
 
-async def generate_tts(text: str, output_file: str, voice: str = "en-US-ChristopherNeural"):
-    """Generates an MP3 file using Microsoft Edge TTS."""
-    communicate = Communicate(text, voice)
-    await communicate.save(output_file)
+def generate_tts(text: str, output_file: str):
+    """Generates an MP3 file using Google TTS (bypass edge-tts 403 error)."""
+    tts = gTTS(text=text, lang='en', tld='com')
+    tts.save(output_file)
 
 def create_video_for_product(product: dict, output_dir: str = "output") -> str:
     """Stitches images, audio, and captions into a final MP4."""
@@ -44,7 +43,7 @@ def create_video_for_product(product: dict, output_dir: str = "output") -> str:
     
     # 1. Generate TTS
     try:
-        asyncio.run(generate_tts(voiceover_text, audio_path))
+        generate_tts(voiceover_text, audio_path)
     except Exception as e:
         log.error("TTS generation failed: %s", e)
         return ""

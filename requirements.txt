@@ -5,5 +5,5 @@ gspread==6.1.2
 google-auth==2.29.0
 lxml==5.2.1
 moviepy==1.0.3
-edge-tts==6.1.12
+gTTS==2.5.1
 google-api-python-client==2.115.0
