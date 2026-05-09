@@ -1,12 +1,14 @@
 """
 Phase 2 — Script Generation
 Reads Phase 1 payload and generates a TikTok video script (voiceover, captions, hashtags) 
-for each product using Gemini 2.5 Flash.
+for each product using Gemini 2.0 Flash.
 """
 
 import json
 import logging
 import os
+import re
+import time
 import requests
 from config import GEMINI_PHASE2_URL, GEMINI_API_KEY
 
@@ -34,7 +36,7 @@ Respond ONLY with valid JSON:
 """
 
 def generate_script(product: dict) -> dict:
-    """Uses Gemini API to generate the script."""
+    """Uses Gemini API to generate the script with retry logic."""
     if not GEMINI_API_KEY:
         log.error("GEMINI_API_KEY not set!")
         return {}
@@ -63,24 +65,61 @@ def generate_script(product: dict) -> dict:
         ],
     }
 
-    # TEMP: single attempt, no retries — for testing Phase 4 upload
-    try:
-        resp = requests.post(GEMINI_PHASE2_URL, json=payload, timeout=60)
-        resp.raise_for_status()
-        data = resp.json()
-        raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
-        
-        clean = raw_text.strip()
-        if clean.startswith("```"):
-            clean = clean.split("```", 2)[1]
-            if clean.startswith("json"):
-                clean = clean[4:]
-        clean = clean.strip().rstrip("`").strip()
-        return json.loads(clean)
-        
-    except Exception as e:
-        log.error("Gemini script generation failed for %s: %s", product.get("title", "")[:20], e)
-        return {}
+    for attempt in range(3):
+        try:
+            resp = requests.post(GEMINI_PHASE2_URL, json=payload, timeout=60)
+            if resp.status_code == 429:
+                wait = 30 * (attempt + 1)
+                log.warning("Gemini 429 Rate Limit. Waiting %ds before retry %d/3...", wait, attempt + 1)
+                time.sleep(wait)
+                continue
+                
+            resp.raise_for_status()
+            data = resp.json()
+            raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
+            
+            # Clean JSON markdown fences if present
+            clean = raw_text.strip()
+            if clean.startswith("```"):
+                clean = clean.split("```", 2)[1]
+                if clean.startswith("json"):
+                    clean = clean[4:]
+            clean = clean.strip().rstrip("`").strip()
+            
+            try:
+                return json.loads(clean)
+            except json.JSONDecodeError as e:
+                log.warning("Gemini returned invalid JSON. Attempting regex fallback... Error: %s", e)
+                result = {"voiceover_text": "", "captions": [], "hashtags": ""}
+                
+                vo_match = re.search(r'"voiceover_text"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', clean)
+                if vo_match:
+                    result["voiceover_text"] = vo_match.group(1).replace('\\"', '"')
+                    
+                hash_match = re.search(r'"hashtags"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', clean)
+                if hash_match:
+                    result["hashtags"] = hash_match.group(1).replace('\\"', '"')
+                    
+                cap_match = re.search(r'"captions"\s*:\s*\[(.*?)\]', clean, re.DOTALL)
+                if cap_match:
+                    cap_str = cap_match.group(1)
+                    captions = re.findall(r'"([^"\\]*(?:\\.[^"\\]*)*)"', cap_str)
+                    result["captions"] = [c.replace('\\"', '"') for c in captions]
+                    
+                if result["voiceover_text"]:
+                    return result
+                else:
+                    raise
+            
+        except Exception as e:
+            if attempt == 2:
+                log.error("Gemini script generation failed for %s: %s", product.get("title", "")[:20], e)
+                return {}
+            else:
+                log.warning("Gemini error: %s. Retrying...", e)
+                time.sleep(15)
+                
+    return {}
 
 def run_phase2():
     log.info("Starting Phase 2: Script Generation")
@@ -105,9 +144,8 @@ def run_phase2():
                 "hashtags": "#trending"
             }
             
-        # TEMP: sleep disabled for fast Phase 4 test
-        # import time
-        # time.sleep(15)
+        # Delay between requests to respect Gemini free tier rate limits
+        time.sleep(15)
             
     with open("data/phase2_payload.json", "w", encoding="utf-8") as f:
         json.dump(products, f, indent=2)
