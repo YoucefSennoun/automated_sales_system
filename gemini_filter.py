@@ -1,14 +1,12 @@
 """
 Phase 0 — Gemini filter
-Sends the shortlist to Gemini 2.5 Flash for a final sanity check.
-Removes bad product picks and generates TikTok hook ideas.
-
-Fix: prompt explicitly instructs Gemini to avoid health/medical language
-in hooks, which was causing safety blocks on the previous version.
+Fix: sanitize titles before sending (removes rogue quotes/pipes),
+increase maxOutputTokens, reduce batch size to avoid truncation.
 """
 
 import json
 import logging
+import re
 import requests
 from config import GEMINI_API_URL, GEMINI_API_KEY, SHORTLIST_SIZE
 
@@ -28,13 +26,13 @@ KEEP a product if it:
 - Solves a visible everyday problem
 - Can be shown working in under 15 seconds of video
 - Is in the $12-$60 price range
-- Has a "wow factor" or surprising result
+- Has a wow factor or surprising result
 
-For HOOK IDEAS — very important rules:
-- Write lifestyle or curiosity hooks ONLY ("I can't believe this works", "Why didn't I know about this sooner")
+For HOOK IDEAS rules:
+- Write lifestyle or curiosity hooks ONLY
 - NEVER mention pain, medical conditions, treatment, cures, or health benefits
 - NEVER mention body parts in a clinical way
-- Keep hooks fun, surprising, or relatable
+- Keep hooks fun, surprising, or relatable — max 15 words
 
 Respond ONLY with valid JSON, no markdown, no extra text:
 {
@@ -54,7 +52,17 @@ Respond ONLY with valid JSON, no markdown, no extra text:
 }"""
 
 
-def gemini_filter(products: list[dict], top_n: int = SHORTLIST_SIZE * 3) -> list[dict]:
+def _sanitize_title(title: str) -> str:
+    """
+    Remove characters that break JSON when Gemini echoes them back.
+    Truncate to 60 chars to keep token count manageable.
+    """
+    clean = title.replace('"', "'").replace('\\', '')
+    clean = re.sub(r'[^\x20-\x7E]', '', clean)   # strip non-ASCII
+    return clean[:60].strip()
+
+
+def gemini_filter(products: list[dict], top_n: int = SHORTLIST_SIZE * 2) -> list[dict]:
     """
     Send top_n products to Gemini for filtering.
     Returns approved products with hook_idea and gemini_reason fields added.
@@ -72,10 +80,9 @@ def gemini_filter(products: list[dict], top_n: int = SHORTLIST_SIZE * 3) -> list
     product_list = [
         {
             "id":       str(i),
-            "title":    p["title"],
+            "title":    _sanitize_title(p["title"]),   # sanitized — no rogue quotes
             "category": p.get("category", "unknown"),
             "price":    p.get("price", "N/A"),
-            "score":    p.get("combined_score", 0),
         }
         for i, p in enumerate(candidates)
     ]
@@ -83,15 +90,14 @@ def gemini_filter(products: list[dict], top_n: int = SHORTLIST_SIZE * 3) -> list
     payload = {
         "contents": [{
             "parts": [{
-                "text": SYSTEM_PROMPT + f"\n\nProduct list:\n{json.dumps(product_list, indent=2)}"
+                "text": SYSTEM_PROMPT + f"\n\nProduct list:\n{json.dumps(product_list, indent=2, ensure_ascii=True)}"
             }]
         }],
         "generationConfig": {
             "temperature":      0.2,
-            "maxOutputTokens":  2048,
+            "maxOutputTokens":  4096,        # was 2048 — increased to avoid truncation
             "responseMimeType": "application/json",
         },
-        # Permissive safety — hooks are commercial marketing, not harmful content
         "safetySettings": [
             {"category": "HARM_CATEGORY_HARASSMENT",        "threshold": "BLOCK_ONLY_HIGH"},
             {"category": "HARM_CATEGORY_HATE_SPEECH",       "threshold": "BLOCK_ONLY_HIGH"},
@@ -102,7 +108,7 @@ def gemini_filter(products: list[dict], top_n: int = SHORTLIST_SIZE * 3) -> list
 
     raw_text = ""
     try:
-        resp = requests.post(GEMINI_API_URL, json=payload, timeout=45)
+        resp = requests.post(GEMINI_API_URL, json=payload, timeout=60)
         resp.raise_for_status()
         data     = resp.json()
         raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
@@ -146,7 +152,7 @@ def gemini_filter(products: list[dict], top_n: int = SHORTLIST_SIZE * 3) -> list
     except json.JSONDecodeError as e:
         log.error("Gemini returned invalid JSON: %s", e)
         if raw_text:
-            log.error("Raw (first 300 chars): %s", raw_text[:300])
+            log.error("Raw (first 400 chars): %s", raw_text[:400])
         return candidates[:SHORTLIST_SIZE]
 
     except Exception as e:
