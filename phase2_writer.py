@@ -130,6 +130,10 @@ def run_phase2():
                 "hashtags": "#trending"
             }
             
+        # Add a 15-second delay to avoid hitting Gemini 2.5 Flash free tier 15 RPM limit
+        import time
+        time.sleep(15)
+            
     with open("data/phase2_payload.json", "w", encoding="utf-8") as f:
         json.dump(products, f, indent=2)
         

@@ -25,46 +25,30 @@ def _get_credentials():
     creds_dict = json.loads(base64.b64decode(GSHEET_CREDENTIALS_B64).decode("utf-8"))
     return Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
 
-def upload_to_drive(file_path: str, mime_type: str = 'video/mp4') -> str:
-    """Uploads a file to Google Drive and returns the shareable webViewLink."""
+import requests
+
+def upload_to_catbox(file_path: str) -> str:
+    """Uploads a file to catbox.moe (free, permanent, direct link) to bypass Drive quotas."""
     if not os.path.exists(file_path):
         log.error("File not found: %s", file_path)
         return ""
 
     try:
-        creds = _get_credentials()
-        service = build('drive', 'v3', credentials=creds)
-
-        file_metadata = {'name': os.path.basename(file_path)}
-        if DRIVE_FOLDER_ID:
-            file_metadata['parents'] = [DRIVE_FOLDER_ID]
-
-        media = MediaFileUpload(file_path, mimetype=mime_type)
-        
-        # Upload
-        file = service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields='id, webViewLink'
-        ).execute()
-        
-        file_id = file.get('id')
-        
-        # Make it publicly viewable so n8n can download it easily
-        permission = {
-            'type': 'anyone',
-            'role': 'reader'
-        }
-        service.permissions().create(
-            fileId=file_id,
-            body=permission
-        ).execute()
-
-        log.info("Uploaded %s to Drive. ID: %s", file_path, file_id)
-        return file.get('webViewLink')
+        with open(file_path, 'rb') as f:
+            files = {
+                'reqtype': (None, 'fileupload'),
+                'fileToUpload': f
+            }
+            resp = requests.post("https://catbox.moe/user/api.php", files=files, timeout=120)
+            resp.raise_for_status()
+            
+            # Catbox returns the direct URL as raw text in the response body
+            direct_link = resp.text.strip()
+            log.info("Uploaded %s to Catbox. Link: %s", file_path, direct_link)
+            return direct_link
 
     except Exception as e:
-        log.error("Google Drive upload failed for %s: %s", file_path, e)
+        log.error("Catbox upload failed for %s: %s", file_path, e)
         return ""
 
 def update_content_queue(product_title: str, video_link: str, caption_text: str):
@@ -109,16 +93,16 @@ def run_phase4():
             continue
             
         log.info("Staging video for: %s", p["title"][:50])
-        drive_link = upload_to_drive(video_path)
+        video_link = upload_to_catbox(video_path)
         
-        if drive_link:
+        if video_link:
             # Combine hook and hashtags for the social media caption
             script_data = p.get("video_script", {})
             hashtags = script_data.get("hashtags", "")
             hook = p.get("hook_idea", "")
             
             caption_text = f"{hook}\n\nLink in bio! 🛒\n{hashtags}"
-            update_content_queue(p["title"], drive_link, caption_text)
+            update_content_queue(p["title"], video_link, caption_text)
             
     log.info("Phase 4 complete.")
 
