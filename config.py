@@ -5,9 +5,7 @@ All settings live here. Sensitive values come from environment variables.
 
 import os
 
-# ── Amazon ─────────────────────────────────────────────────────────────────
-# Category slugs from amazon.com/gp/bestsellers/<slug>
-# Pick the ones that match what PlusBase carries in your store
+# ── Amazon ──────────────────────────────────────────────────────────────────
 AMAZON_CATEGORIES = [
     "home-garden",
     "beauty",
@@ -18,68 +16,56 @@ AMAZON_CATEGORIES = [
     "kitchen",
 ]
 
-# How many top products to pull per category
-AMAZON_TOP_N = 20
+AMAZON_TOP_N          = 20
+AMAZON_REQUEST_DELAY  = 3
 
-# Delay between requests (seconds) — keeps Amazon happy, avoids blocks
-AMAZON_REQUEST_DELAY = 3
-
-# Rotate user agents to avoid basic bot detection
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/123.0 Safari/537.36",
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/122.0 Safari/537.36",
 ]
 
-# ── Google Trends ───────────────────────────────────────────────────────────
-TRENDS_TIMEFRAME = "now 7-d"   # last 7 days — catches fast-rising products
-TRENDS_GEO       = ""          # "" = worldwide; "US" = US only
-MAX_RETRIES      = 3
-BACKOFF          = 15          # seconds — generous to avoid prolonged Google blocks
+# ── Signal toggles ──────────────────────────────────────────────────────────
+# Both kept True — GitHub/cloud IPs are rate-limited by Google for both.
+# Scorer automatically redistributes weights when these are skipped.
+SKIP_TRENDS  = True
+SKIP_TIKTOK  = True
+SKIP_PLUSBASE = True   # set False once your PLUSBASE_STORE_URL is configured
 
-# Set True to skip Google Trends entirely (pytrends is often rate-limited by
-# Google from CI/cloud IPs). Flip to False once you have a proxy or SerpAPI key.
-SKIP_TRENDS = True
+# ── Google Trends (used only when SKIP_TRENDS = False) ──────────────────────
+TRENDS_TIMEFRAME      = "now 7-d"
+TRENDS_GEO            = ""
+MAX_RETRIES           = 3
+BACKOFF               = 15
+TIKTOK_SEARCH_DELAY   = 15
 
-# ── TikTok signal ───────────────────────────────────────────────────────────
-# We estimate TikTok presence via Google search result count for:
-# site:tiktok.com "<product keyword>"
-# Not perfect but free and no auth needed.
-TIKTOK_SEARCH_DELAY = 15       # seconds between Google searches — avoids 429 blocks
-
-# Set True to skip TikTok signal entirely (Google search is often rate-limited).
-SKIP_TIKTOK = True
-
-# ── Scoring weights (must sum to 1.0) ──────────────────────────────────────
+# ── Scoring weights ─────────────────────────────────────────────────────────
+# These are the BASE weights. Scorer normalizes them dynamically
+# based on which signals are active (SKIP_* flags above).
 SCORE_WEIGHT_AMAZON = 0.45
 SCORE_WEIGHT_TRENDS = 0.35
 SCORE_WEIGHT_TIKTOK = 0.20
 
 # ── Filtering ───────────────────────────────────────────────────────────────
-# Products with a combined score below this are dropped before Gemini sees them
-MIN_SCORE_THRESHOLD = 0.30
+# With SKIP_TRENDS=True and SKIP_TIKTOK=True, scorer uses Amazon weight only
+# (normalized to 1.0), so scores go 0–1 as normal. Threshold of 0.25 keeps
+# roughly top 15 products out of 20 per category for Gemini to review.
+MIN_SCORE_THRESHOLD = 0.25
 
-# Final shortlist size sent to the pipeline
 SHORTLIST_SIZE = 5
 
 # ── Gemini ──────────────────────────────────────────────────────────────────
-GEMINI_API_KEY   = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL     = "gemini-2.5-flash"
-GEMINI_API_URL   = (
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL   = "gemini-2.5-flash"
+GEMINI_API_URL = (
     f"https://generativelanguage.googleapis.com/v1beta/models/"
     f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
 )
 
-# ── Google Sheets output ────────────────────────────────────────────────────
-# Service account JSON stored as an env variable (base64-encoded)
+# ── Google Sheets ────────────────────────────────────────────────────────────
 GSHEET_CREDENTIALS_B64 = os.getenv("GSHEET_CREDENTIALS_B64", "")
 GSHEET_SPREADSHEET_ID  = os.getenv("GSHEET_SPREADSHEET_ID", "")
 GSHEET_WORKSHEET_NAME  = "Phase0_Products"
 
-# ── PlusBase ────────────────────────────────────────────────────────────────
-# Your store URL — used to cross-check if a product is available
+# ── PlusBase ─────────────────────────────────────────────────────────────────
 PLUSBASE_STORE_URL = os.getenv("PLUSBASE_STORE_URL", "")
-
-# Set True to skip matching products against your store catalog.
-# Useful if you don't know your store's JSON API endpoint.
-SKIP_PLUSBASE = True
