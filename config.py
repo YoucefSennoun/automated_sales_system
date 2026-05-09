@@ -69,3 +69,6 @@ GSHEET_WORKSHEET_NAME  = "Phase0_Products"
 
 # ── PlusBase ─────────────────────────────────────────────────────────────────
 PLUSBASE_STORE_URL = os.getenv("PLUSBASE_STORE_URL", "")
+
+# ── Google Drive (Phase 4) ───────────────────────────────────────────────────
+DRIVE_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID", "")

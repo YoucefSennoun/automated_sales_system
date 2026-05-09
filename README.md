@@ -52,7 +52,7 @@ Add these 4 secrets:
 ```bash
 git init
 git add .
-git commit -m "Phase 0 — product research pipeline"
+git commit -m "Phase 0-4 — complete automated pipeline"
 git branch -M main
 git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO.git
 git push -u origin main
@@ -60,6 +60,24 @@ git push -u origin main
 
 The workflow runs automatically at 06:00 UTC every day.
 To test immediately: GitHub → Actions → Phase 0 → Run workflow.
+
+---
+
+# Phase 1-4 — Content Creation Pipeline
+
+This new pipeline runs after Phase 0. It takes the top products, writes a viral TikTok script, generates an AI voiceover, stitches scraped images into a video, and queues it for n8n to post.
+
+## Setup Requirements
+
+1. **System Dependencies**: The video generator (`moviepy`) requires `ImageMagick` to be installed on your system (or GitHub Actions runner) to generate text captions.
+2. **Google Drive Folder**: Create a Google Drive folder and share it with your service account email. Get the Folder ID from the URL (`folders/THIS_IS_THE_ID`).
+3. **Add Secret**: Add `DRIVE_FOLDER_ID` to your GitHub repository secrets.
+
+To run locally:
+```bash
+pip install -r requirements.txt
+python main_content.py
+```
 
 ---
 
