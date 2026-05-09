@@ -56,10 +56,17 @@ SHORTLIST_SIZE = 5
 
 # ── Gemini ──────────────────────────────────────────────────────────────────
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL   = "gemini-2.5-flash"
+GEMINI_MODEL   = "gemini-2.5-flash"        # Phase 0 filter
 GEMINI_API_URL = (
     f"https://generativelanguage.googleapis.com/v1beta/models/"
     f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+)
+
+# Phase 2 uses gemini-2.0-flash (1500 RPD free tier vs tighter 2.5-flash limits)
+GEMINI_PHASE2_MODEL = "gemini-2.0-flash"
+GEMINI_PHASE2_URL = (
+    f"https://generativelanguage.googleapis.com/v1beta/models/"
+    f"{GEMINI_PHASE2_MODEL}:generateContent?key={GEMINI_API_KEY}"
 )
 
 # ── Google Sheets ────────────────────────────────────────────────────────────

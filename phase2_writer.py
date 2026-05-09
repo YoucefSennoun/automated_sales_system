@@ -8,7 +8,7 @@ import json
 import logging
 import os
 import requests
-from config import GEMINI_API_URL, GEMINI_API_KEY
+from config import GEMINI_PHASE2_URL, GEMINI_API_KEY
 
 log = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ def generate_script(product: dict) -> dict:
 
     for attempt in range(3):
         try:
-            resp = requests.post(GEMINI_API_URL, json=payload, timeout=60)
+            resp = requests.post(GEMINI_PHASE2_URL, json=payload, timeout=60)
             if resp.status_code == 429:
                 import time
                 log.warning("Gemini 429 Rate Limit hit. Retrying in %d seconds...", 20 * (attempt + 1))
