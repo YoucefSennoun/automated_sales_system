@@ -99,10 +99,10 @@ def gemini_filter(products: list[dict], top_n: int = SHORTLIST_SIZE * 2) -> list
             "responseMimeType": "application/json",
         },
         "safetySettings": [
-            {"category": "HARM_CATEGORY_HARASSMENT",        "threshold": "BLOCK_ONLY_HIGH"},
-            {"category": "HARM_CATEGORY_HATE_SPEECH",       "threshold": "BLOCK_ONLY_HIGH"},
-            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"},
-            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"},
+            {"category": "HARM_CATEGORY_HARASSMENT",        "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH",       "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
         ],
     }
 
@@ -121,7 +121,25 @@ def gemini_filter(products: list[dict], top_n: int = SHORTLIST_SIZE * 2) -> list
                 clean = clean[4:]
         clean = clean.strip().rstrip("`").strip()
 
-        result = json.loads(clean)
+        try:
+            result = json.loads(clean)
+        except json.JSONDecodeError as e:
+            log.warning("Gemini returned invalid JSON. Attempting regex fallback... Error: %s", e)
+            result = {"approved": [], "rejected": []}
+            for block in re.finditer(r'\{([^{}]*)\}', clean):
+                inner = block.group(1)
+                if '"id"' in inner and '"hook_idea"' in inner:
+                    id_match = re.search(r'"id"\s*:\s*"(\d+)"', inner)
+                    reason_match = re.search(r'"reason"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', inner)
+                    hook_match = re.search(r'"hook_idea"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', inner)
+                    if id_match:
+                        result["approved"].append({
+                            "id": id_match.group(1),
+                            "reason": reason_match.group(1).replace('\\"', '"') if reason_match else "",
+                            "hook_idea": hook_match.group(1).replace('\\"', '"') if hook_match else ""
+                        })
+            if not result["approved"]:
+                raise  # Re-raise to trigger the outer except block
 
         approved_ids = set()
         hook_map, reason_map = {}, {}

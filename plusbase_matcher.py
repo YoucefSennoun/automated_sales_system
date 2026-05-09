@@ -104,7 +104,15 @@ def filter_to_store_products(
         log.warning("PLUSBASE_STORE_URL not set — skipping catalog filter")
         # Return all products unfiltered if store URL not configured
         for p in scored_products:
-            p["store_match"] = "unknown"
+            p["store_match"]       = "unknown"
+            p["store_match_score"] = 0.0
+        return scored_products
+
+    # Basic validation of the store URL
+    if not (store_url.startswith("http://") or store_url.startswith("https://")):
+        log.warning("PLUSBASE_STORE_URL appears malformed (%s) — skipping catalog filter", store_url)
+        for p in scored_products:
+            p["store_match"]       = "unknown"
             p["store_match_score"] = 0.0
         return scored_products
 
