@@ -7,13 +7,13 @@ import os
 
 # ── Amazon ──────────────────────────────────────────────────────────────────
 AMAZON_CATEGORIES = [
-    "home-garden",
+    "electronics-accessories",
     "beauty",
     "health-personal-care",
     "sports-and-outdoors",
-    "toys-and-games",
-    "pet-supplies",
     "kitchen",
+    "office-products",
+    "tools",
 ]
 
 AMAZON_TOP_N          = 20
@@ -50,9 +50,9 @@ SCORE_WEIGHT_TIKTOK = 0.20
 # With SKIP_TRENDS=True and SKIP_TIKTOK=True, scorer uses Amazon weight only
 # (normalized to 1.0), so scores go 0–1 as normal. Threshold of 0.25 keeps
 # roughly top 15 products out of 20 per category for Gemini to review.
-MIN_SCORE_THRESHOLD = 0.25
+MIN_SCORE_THRESHOLD = 0.35
 
-SHORTLIST_SIZE = 5
+SHORTLIST_SIZE = 3
 
 # ── Gemini ──────────────────────────────────────────────────────────────────
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")

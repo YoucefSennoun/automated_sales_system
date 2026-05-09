@@ -1,4 +1,4 @@
-name: Phase 0 — Product Research
+name: Phase 0 — Product Research + Script
 
 on:
   schedule:
@@ -20,17 +20,10 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      - name: Install system dependencies (ImageMagick)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y imagemagick
-          # Fix ImageMagick policy to allow text generation for moviepy
-          sudo sed -i 's/<policy domain="path" rights="none" pattern="@\*"/<!-- <policy domain="path" rights="none" pattern="@\*" -->/g' /etc/ImageMagick-6/policy.xml
-
-      - name: Install Python dependencies
+      - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run Phase 0 research pipeline
+      - name: Run Phase 0 — product research
         env:
           GEMINI_API_KEY:         ${{ secrets.GEMINI_API_KEY }}
           GSHEET_CREDENTIALS_B64: ${{ secrets.GSHEET_CREDENTIALS_B64 }}
@@ -38,22 +31,20 @@ jobs:
           PLUSBASE_STORE_URL:     ${{ secrets.PLUSBASE_STORE_URL }}
         run: python main.py
 
-      - name: Run Phase 1-4 Content Creation Pipeline
+      - name: Run Phase 2+4 — script generation
         env:
           GEMINI_API_KEY:         ${{ secrets.GEMINI_API_KEY }}
           GSHEET_CREDENTIALS_B64: ${{ secrets.GSHEET_CREDENTIALS_B64 }}
           GSHEET_SPREADSHEET_ID:  ${{ secrets.GSHEET_SPREADSHEET_ID }}
-          DRIVE_FOLDER_ID:        ${{ secrets.DRIVE_FOLDER_ID }}
         run: python main_content.py
 
-      - name: Upload logs and videos as artifact
+      - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pipeline-output-${{ github.run_id }}
+          name: pipeline-log-${{ github.run_id }}
           path: |
             phase0_*.log
-            shortlist_fallback.csv
-            output/*.mp4
+            shortlist_fallback_*.csv
             data/*.json
-          retention-days: 14
+          retention-days: 7

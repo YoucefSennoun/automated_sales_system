@@ -1,93 +1,55 @@
 """
-Phase 4 — Staging for n8n
-Reads Phase 3 payload and logs the generated videos into a 'Content_Queue' 
-Google Sheet for n8n to process.
-
-Videos are stored as GitHub Actions artifacts (downloadable from the Actions page).
+Phase 4 — Completion logger
+Reads Phase 2 output and marks Content_Queue rows as actionable.
+Logs a summary so the operator knows what to film today.
 """
 
-import os
 import json
-import base64
 import logging
+import os
 from datetime import datetime
-from google.oauth2.service_account import Credentials
-import gspread
-
-from config import GSHEET_CREDENTIALS_B64, GSHEET_SPREADSHEET_ID
-from sheets_output import SCOPES
 
 log = logging.getLogger(__name__)
 
-def _get_credentials():
-    if not GSHEET_CREDENTIALS_B64:
-        raise ValueError("GSHEET_CREDENTIALS_B64 env variable not set")
-    creds_dict = json.loads(base64.b64decode(GSHEET_CREDENTIALS_B64).decode("utf-8"))
-    return Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-
-def update_content_queue(product_title: str, video_filename: str, caption_text: str):
-    """Appends a row to the Content_Queue worksheet."""
-    try:
-        creds = _get_credentials()
-        client = gspread.authorize(creds)
-        sheet = client.open_by_key(GSHEET_SPREADSHEET_ID)
-        
-        worksheet_name = "Content_Queue"
-        try:
-            ws = sheet.worksheet(worksheet_name)
-        except gspread.exceptions.WorksheetNotFound:
-            ws = sheet.add_worksheet(title=worksheet_name, rows=1000, cols=6)
-            headers = ["Date", "Product Title", "Video File", "Caption + Hashtags", "Status", "Notes"]
-            ws.update("A1", [headers])
-            log.info("Created worksheet: %s", worksheet_name)
-            
-        today = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-        run_id = os.getenv("GITHUB_RUN_ID", "local")
-        repo = os.getenv("GITHUB_REPOSITORY", "")
-        
-        if repo and run_id != "local":
-            notes = f"Download from: github.com/{repo}/actions/runs/{run_id}"
-        else:
-            notes = f"Local file: {video_filename}"
-            
-        row = [today, product_title, video_filename, caption_text, "Pending", notes]
-        
-        ws.append_row(row, value_input_option="USER_ENTERED")
-        log.info("Added %s to Content_Queue", product_title[:30])
-        
-    except Exception as e:
-        log.error("Failed to update Content_Queue sheet: %s", e)
 
 def run_phase4():
-    log.info("Starting Phase 4: Staging for n8n")
-    
-    if not os.path.exists("data/phase3_payload.json"):
-        log.error("data/phase3_payload.json not found! Run Phase 3 first.")
+    log.info("Phase 4: Completion summary")
+
+    if not os.path.exists("data/phase2_payload.json"):
+        log.warning("data/phase2_payload.json not found — Phase 2 may not have run")
         return
-        
-    with open("data/phase3_payload.json", "r", encoding="utf-8") as f:
+
+    with open("data/phase2_payload.json", "r", encoding="utf-8") as f:
         products = json.load(f)
-    
-    queued = 0
+
+    if not products:
+        log.info("No products in payload")
+        return
+
+    log.info("=" * 60)
+    log.info("TODAY'S FILMING BRIEFING — %s", datetime.utcnow().strftime("%Y-%m-%d"))
+    log.info("=" * 60)
+    log.info("Open your Content_Queue sheet to see full scripts.")
+    log.info("")
+
     for p in products:
-        video_path = p.get("video_path")
-        if not video_path:
-            continue
-            
-        log.info("Queuing video for: %s", p["title"][:50])
-        
-        script_data = p.get("video_script", {})
-        hashtags = script_data.get("hashtags", "")
-        hook = p.get("hook_idea", "")
-        
-        caption_text = f"{hook}\n\nLink in bio! 🛒\n{hashtags}"
-        video_filename = os.path.basename(video_path)
-        
-        update_content_queue(p["title"], video_filename, caption_text)
-        queued += 1
-            
-    log.info("Phase 4 complete. Queued %d videos to Content_Queue sheet.", queued)
-    log.info("Videos are saved as GitHub Actions artifacts — download from the Actions page.")
+        script = p.get("script", {})
+        log.info("PRODUCT #%s: %s", p.get("rank", "?"), p.get("title", "")[:60])
+        log.info("  Hook:   %s", p.get("hook_idea", ""))
+        log.info("  Script: %s", script.get("voiceover", "")[:100])
+        log.info("  Shots:  %s", script.get("visual_direction", "")[:120])
+        log.info("  Tags:   %s", script.get("hashtags", ""))
+        log.info("")
+
+    log.info("HOW TO MAKE THE VIDEO (10 minutes):")
+    log.info("  Option A — CapCut: Open app > Script to Video > paste voiceover > generate")
+    log.info("  Option B — Meta AI: meta.ai/imagine > describe product scene > generate video")
+    log.info("  Option C — Film it yourself following the visual direction above")
+    log.info("")
+    log.info("Once the video is ready, drop it in your Google Drive folder.")
+    log.info("n8n will pick it up and post it automatically on schedule.")
+    log.info("=" * 60)
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s — %(message)s")

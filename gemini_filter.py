@@ -1,7 +1,7 @@
 """
 Phase 0 — Gemini filter
-Fix: sanitize titles before sending (removes rogue quotes/pipes),
-increase maxOutputTokens, reduce batch size to avoid truncation.
+Sends top products to Gemini 2.5 Flash for quality filtering.
+Rejects branded, commodity, and non-dropshippable items.
 """
 
 import json
@@ -12,62 +12,51 @@ from config import GEMINI_API_URL, GEMINI_API_KEY, SHORTLIST_SIZE
 
 log = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are a dropshipping and TikTok marketing expert.
-Review this product list and decide which are good to sell and promote.
+SYSTEM_PROMPT = """You are a dropshipping product expert. Review this product list.
 
-REMOVE a product if it:
-- Is a well-known brand that cannot be dropshipped (Nike, Apple, Samsung, etc.)
-- Is a commodity with zero differentiation (plain phone cases, basic socks)
-- Is completely market-saturated (fidget spinners, pop sockets in 2024)
-- Costs under $8 or over $80 (bad margins or hard impulse buy)
-- Has no visual demonstration potential for short video
+REJECT a product if ANY of these are true:
+- It has a specific brand name in the title (TERRO, Amazon Basics, Purina, Nike,
+  Apple, Samsung, Owala, BIODANCE, Fancy Feast, PartyWoo, upsimples, or any
+  other identifiable brand). Generic category names like "Electric Massager" are
+  fine; branded names like "Homedics Massager" are not.
+- It is a consumable that needs repeat purchase (food, cleaning supplies, bait stations)
+- It is a commodity with zero differentiation (balloons, pee pads, picture frames)
+- Price is under $12 or over $70
+- It has no clear 15-second video demonstration potential
 
-KEEP a product if it:
-- Solves a visible everyday problem
-- Can be shown working in under 15 seconds of video
-- Is in the $12-$60 price range
-- Has a wow factor or surprising result
+APPROVE a product only if ALL of these are true:
+- It is a generic unbranded or white-label type product
+- It solves a visible, relatable everyday problem
+- Showing it in action for 15 seconds creates a clear "wow" or "I need that" reaction
+- It fits impulse buy psychology ($15-$60 range)
+- It is something you could source from AliExpress without infringing any trademark
 
-For HOOK IDEAS rules:
-- Write lifestyle or curiosity hooks ONLY
-- NEVER mention pain, medical conditions, treatment, cures, or health benefits
-- NEVER mention body parts in a clinical way
-- Keep hooks fun, surprising, or relatable — max 15 words
+For approved products, write a HOOK IDEA that:
+- Opens with a situation the viewer recognises ("POV:", "Nobody told me about", "This changed how I")
+- Does NOT mention any health claims, medical conditions, or body parts clinically
+- Is under 12 words
+- Sounds like a real person, not an advertisement
 
-Respond ONLY with valid JSON, no markdown, no extra text:
+Respond ONLY with valid JSON. No markdown. No explanation. Just the JSON object:
 {
   "approved": [
-    {
-      "id": "number from input",
-      "reason": "one sentence why good for dropshipping",
-      "hook_idea": "one sentence lifestyle hook for TikTok"
-    }
+    {"id": "0", "reason": "max 8 words why dropshippable", "hook_idea": "hook under 12 words"}
   ],
   "rejected": [
-    {
-      "id": "number from input",
-      "reason": "one sentence why removed"
-    }
+    {"id": "0", "reason": "max 8 words why rejected"}
   ]
 }"""
 
 
-def _sanitize_title(title: str) -> str:
-    """
-    Remove characters that break JSON when Gemini echoes them back.
-    Truncate to 60 chars to keep token count manageable.
-    """
-    clean = title.replace('"', "'").replace('\\', '')
-    clean = re.sub(r'[^\x20-\x7E]', '', clean)   # strip non-ASCII
-    return clean[:60].strip()
+def _sanitize(title: str) -> str:
+    """Remove characters that break Gemini JSON output."""
+    clean = title.replace('"', "'").replace('\\', '').replace('\n', ' ')
+    clean = re.sub(r'[^\x20-\x7E]', '', clean)
+    return clean[:50].strip()
 
 
 def gemini_filter(products: list[dict], top_n: int = SHORTLIST_SIZE * 2) -> list[dict]:
-    """
-    Send top_n products to Gemini for filtering.
-    Returns approved products with hook_idea and gemini_reason fields added.
-    Falls back gracefully if API key missing or request fails.
-    """
+    """Filter products via Gemini. Falls back to top scored if API fails."""
     if not products:
         return []
 
@@ -79,30 +68,25 @@ def gemini_filter(products: list[dict], top_n: int = SHORTLIST_SIZE * 2) -> list
 
     product_list = [
         {
-            "id":       str(i),
-            "title":    _sanitize_title(p["title"]),   # sanitized — no rogue quotes
-            "category": p.get("category", "unknown"),
-            "price":    p.get("price", "N/A"),
+            "id":    str(i),
+            "title": _sanitize(p["title"]),
+            "price": p.get("price", "N/A"),
         }
         for i, p in enumerate(candidates)
     ]
 
     payload = {
-        "contents": [{
-            "parts": [{
-                "text": SYSTEM_PROMPT + f"\n\nProduct list:\n{json.dumps(product_list, indent=2, ensure_ascii=True)}"
-            }]
-        }],
+        "contents": [{"parts": [{"text": SYSTEM_PROMPT + f"\n\nProducts:\n{json.dumps(product_list, ensure_ascii=True)}"}]}],
         "generationConfig": {
-            "temperature":      0.2,
-            "maxOutputTokens":  4096,        # was 2048 — increased to avoid truncation
+            "temperature":      0.1,
+            "maxOutputTokens":  1024,
             "responseMimeType": "application/json",
         },
         "safetySettings": [
-            {"category": "HARM_CATEGORY_HARASSMENT",        "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_HATE_SPEECH",       "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HARASSMENT",        "threshold": "BLOCK_ONLY_HIGH"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH",       "threshold": "BLOCK_ONLY_HIGH"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"},
         ],
     }
 
@@ -110,10 +94,14 @@ def gemini_filter(products: list[dict], top_n: int = SHORTLIST_SIZE * 2) -> list
     try:
         resp = requests.post(GEMINI_API_URL, json=payload, timeout=60)
         resp.raise_for_status()
-        data     = resp.json()
-        raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
+        data = resp.json()
 
-        # Strip accidental markdown fences
+        candidate_resp = data["candidates"][0]
+        if candidate_resp.get("finishReason") == "MAX_TOKENS":
+            log.warning("Gemini hit MAX_TOKENS — using top scored fallback")
+            return candidates[:SHORTLIST_SIZE]
+
+        raw_text = candidate_resp["content"]["parts"][0]["text"]
         clean = raw_text.strip()
         if clean.startswith("```"):
             clean = clean.split("```", 2)[1]
@@ -121,28 +109,9 @@ def gemini_filter(products: list[dict], top_n: int = SHORTLIST_SIZE * 2) -> list
                 clean = clean[4:]
         clean = clean.strip().rstrip("`").strip()
 
-        try:
-            result = json.loads(clean)
-        except json.JSONDecodeError as e:
-            log.warning("Gemini returned invalid JSON. Attempting regex fallback... Error: %s", e)
-            result = {"approved": [], "rejected": []}
-            for block in re.finditer(r'\{([^{}]*)\}', clean):
-                inner = block.group(1)
-                if '"id"' in inner and '"hook_idea"' in inner:
-                    id_match = re.search(r'"id"\s*:\s*"(\d+)"', inner)
-                    reason_match = re.search(r'"reason"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', inner)
-                    hook_match = re.search(r'"hook_idea"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', inner)
-                    if id_match:
-                        result["approved"].append({
-                            "id": id_match.group(1),
-                            "reason": reason_match.group(1).replace('\\"', '"') if reason_match else "",
-                            "hook_idea": hook_match.group(1).replace('\\"', '"') if hook_match else ""
-                        })
-            if not result["approved"]:
-                raise  # Re-raise to trigger the outer except block
+        result = json.loads(clean)
 
-        approved_ids = set()
-        hook_map, reason_map = {}, {}
+        approved_ids, hook_map, reason_map = set(), {}, {}
         for item in result.get("approved", []):
             try:
                 idx = int(item["id"])
@@ -152,6 +121,9 @@ def gemini_filter(products: list[dict], top_n: int = SHORTLIST_SIZE * 2) -> list
             except (KeyError, ValueError):
                 continue
 
+        for r in result.get("rejected", []):
+            log.info("Gemini rejected #%s: %s", r.get("id","?"), r.get("reason",""))
+
         filtered = []
         for i, p in enumerate(candidates):
             if i in approved_ids:
@@ -159,20 +131,14 @@ def gemini_filter(products: list[dict], top_n: int = SHORTLIST_SIZE * 2) -> list
                 p["gemini_reason"] = reason_map.get(i, "")
                 filtered.append(p)
 
-        for r in result.get("rejected", []):
-            log.info("Gemini rejected #%s: %s", r.get("id", "?"), r.get("reason", ""))
-
         filtered.sort(key=lambda x: x["combined_score"], reverse=True)
         final = filtered[:SHORTLIST_SIZE]
-        log.info("Gemini: %d approved → returning top %d", len(filtered), len(final))
-        return final
+        log.info("Gemini approved %d/%d products", len(final), len(candidates))
+        return final if final else candidates[:SHORTLIST_SIZE]
 
     except json.JSONDecodeError as e:
-        log.error("Gemini returned invalid JSON: %s", e)
-        if raw_text:
-            log.error("Raw (first 400 chars): %s", raw_text[:400])
+        log.error("Gemini invalid JSON: %s | Raw: %s", e, raw_text[:300])
         return candidates[:SHORTLIST_SIZE]
-
     except Exception as e:
         log.error("Gemini API error: %s", e)
         return candidates[:SHORTLIST_SIZE]

@@ -1,129 +1,85 @@
-# Phase 0 — Product Research Pipeline
+# Automated Sales System
 
-Automatically finds trending, sellable products every day.
-Zero cost. Runs on GitHub Actions free tier.
+Finds trending dropshippable products daily, generates TikTok scripts automatically,
+and gives you a 10-minute filming briefing every morning.
 
-## What it does
+## How it works
 
+**Automated (runs at 6am UTC daily via GitHub Actions):**
 1. Scrapes Amazon Best Sellers across 7 categories
-2. Checks Google Trends for search velocity (last 7 days)
-3. Estimates TikTok presence via Google search
-4. Scores and ranks all products
-5. Filters to products available in your PlusBase store
-6. Gemini AI removes bad picks and adds video hook ideas
-7. Writes the daily top 5 to your Google Sheet → feeds Phase 1
+2. Scores products by rank
+3. Gemini AI filters out branded/non-dropshippable items and writes TikTok hooks
+4. Writes top 3 products to your `Phase0_Products` Google Sheet
+5. Generates a full TikTok script and shot list for each product
+6. Writes the filming briefing to your `Content_Queue` Google Sheet
 
----
+**Manual (10 minutes per day):**
+7. Open `Content_Queue` — read today's product, script, and shot list
+8. Make the video in CapCut (script-to-video) or Meta AI (text-to-video)
+9. Drop the video in your Google Drive posting folder
+10. n8n posts it to TikTok/Instagram automatically on your schedule
 
-## One-time setup (30 minutes)
+## Setup
 
-### 1. Gemini API key (free)
-1. Go to https://aistudio.google.com/app/apikey
-2. Click "Create API Key"
-3. Copy the key
+### GitHub Secrets required
 
-### 2. Google Sheets credentials
-1. Go to https://console.cloud.google.com
-2. Create a new project (or use existing)
-3. Enable: **Google Sheets API** and **Google Drive API**
-4. Go to IAM → Service Accounts → Create Service Account
-5. Download the JSON key file
-6. Base64-encode it:
-   ```bash
-   base64 -w 0 credentials.json
-   ```
-7. Copy the output (this is your GSHEET_CREDENTIALS_B64)
-8. Create a Google Sheet → share it with the service account email
-9. Copy the Sheet ID from the URL:
-   `https://docs.google.com/spreadsheets/d/THIS_IS_THE_ID/edit`
-
-### 3. GitHub repository secrets
-Go to your repo → Settings → Secrets and variables → Actions → New secret
-
-Add these 4 secrets:
-| Secret name | Value |
+| Secret | Where to get it |
 |---|---|
-| `GEMINI_API_KEY` | Your Gemini API key |
-| `GSHEET_CREDENTIALS_B64` | Base64-encoded service account JSON |
-| `GSHEET_SPREADSHEET_ID` | Your Google Sheet ID |
-| `PLUSBASE_STORE_URL` | e.g. `https://yourstore.myshopify.com` |
+| `GEMINI_API_KEY` | https://aistudio.google.com/app/apikey |
+| `GSHEET_CREDENTIALS_B64` | Google Cloud → Service Account → JSON key → base64 encoded |
+| `GSHEET_SPREADSHEET_ID` | From your Google Sheet URL |
+| `PLUSBASE_STORE_URL` | Your store URL (optional, leave blank to skip) |
 
-### 4. Push to GitHub
-```bash
-git init
-git add .
-git commit -m "Phase 0-4 — complete automated pipeline"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO.git
-git push -u origin main
-```
+### Google Sheet setup
+1. Create a new Google Sheet
+2. Create a Service Account in Google Cloud Console
+3. Enable Google Sheets API and Google Drive API
+4. Share the sheet with the service account email (Editor access)
+5. Base64-encode the service account JSON: `base64 -w 0 credentials.json`
+6. Add the result as the `GSHEET_CREDENTIALS_B64` secret
 
-The workflow runs automatically at 06:00 UTC every day.
-To test immediately: GitHub → Actions → Phase 0 → Run workflow.
-
----
-
-# Phase 1-4 — Content Creation Pipeline
-
-This new pipeline runs after Phase 0. It takes the top products, writes a viral TikTok script, generates an AI voiceover, stitches scraped images into a video, and queues it for n8n to post.
-
-## Setup Requirements
-
-1. **System Dependencies**: The video generator (`moviepy`) requires `ImageMagick` to be installed on your system (or GitHub Actions runner) to generate text captions.
-2. **Google Drive Folder**: Create a Google Drive folder and share it with your service account email. Get the Folder ID from the URL (`folders/THIS_IS_THE_ID`).
-3. **Add Secret**: Add `DRIVE_FOLDER_ID` to your GitHub repository secrets.
-
-To run locally:
+### Run manually
 ```bash
 pip install -r requirements.txt
-python main_content.py
+python main.py          # Phase 0: product research
+python main_content.py  # Phase 2+4: script generation
 ```
 
----
+## Output sheets
 
-## Output
-
-The Google Sheet gets a new row for each product daily:
-
+**Phase0_Products** — daily product shortlist
 | Column | Description |
 |---|---|
-| date | When this was generated |
-| rank | 1 = best pick of the day |
+| date | Run date |
+| rank | 1 = best pick |
 | title | Product name |
-| combined_score | 0–1, higher is better |
+| combined_score | 0–1 score |
 | hook_idea | Gemini-generated TikTok hook |
-| status | `pending` → Phase 1 updates to `scripted` |
+| status | pending / scripted |
 
----
+**Content_Queue** — daily filming briefing
+| Column | Description |
+|---|---|
+| product_title | What to find/source |
+| hook | Opening line for the video |
+| voiceover | Full script (40-55 words) |
+| captions | On-screen text |
+| hashtags | Post hashtags |
+| visual_direction | Shot-by-shot filming guide |
+| status | ready_to_film / posted |
 
-## Adjust categories
+## Making videos (10 minutes)
 
-Edit `config.py` → `AMAZON_CATEGORIES` to match what your store sells.
-Full list of Amazon category slugs: https://www.amazon.com/gp/bestsellers/
+**CapCut (recommended):**
+Open CapCut → Script to Video → paste the voiceover from Content_Queue → pick a style → generate → download
 
-## Adjust scoring weights
+**Meta AI:**
+Go to meta.ai → describe the product scene → generate → download
 
-Edit `config.py`:
-```python
-SCORE_WEIGHT_AMAZON = 0.45  # Amazon rank importance
-SCORE_WEIGHT_TRENDS = 0.35  # Google Trends importance
-SCORE_WEIGHT_TIKTOK = 0.20  # TikTok presence importance
-```
+**Film yourself:**
+Follow the visual_direction column — 3-4 shots with your phone is enough
 
----
+## Adjust product categories
 
-## Troubleshooting
-
-**Amazon returns no products**
-Amazon has bot detection. If it blocks you, add more delay:
-`AMAZON_REQUEST_DELAY = 6` in config.py
-
-**Google Trends rate limit error**
-Reduce batch sizes or increase `DELAY_BETWEEN_BATCHES` in trends_scraper.py
-
-**Gemini returns invalid JSON**
-The filter falls back to returning the top 5 scored products unfiltered.
-Check the log artifact for the raw Gemini response.
-
-**Sheet write fails**
-Verify the service account email has Editor access to the Sheet.
+Edit `config.py` → `AMAZON_CATEGORIES`. Current list targets dropshippable items.
+Full slug list: https://www.amazon.com/gp/bestsellers/
